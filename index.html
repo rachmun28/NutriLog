@@ -668,7 +668,8 @@ function addFoodEntry(){
   e[selectedMeal].push({name:pendingFood.name,brand:pendingFood.brand,servingSize:pendingFood.servingSize,servingQty:qty,calories:pendingFood.calories*qty,protein:pendingFood.protein*qty,carbs:pendingFood.carbs*qty,fat:pendingFood.fat*qty,source:pendingFood.source||'off',addedAt:new Date().toISOString()});
   saveLogData();renderAll();closeModal();showToast(`Added to ${selectedMeal}`);
 }
- (search tab) ----
+
+// ---- BARCODE SCANNER (search tab) ----
 document.getElementById('scanBtn').addEventListener('click',toggleScanner);
 async function toggleScanner(){
   if(scannerActive){stopScanner();return;}
