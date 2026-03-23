@@ -667,10 +667,8 @@ function addFoodEntry(){
   const e=todayEntries();
   e[selectedMeal].push({name:pendingFood.name,brand:pendingFood.brand,servingSize:pendingFood.servingSize,servingQty:qty,calories:pendingFood.calories*qty,protein:pendingFood.protein*qty,carbs:pendingFood.carbs*qty,fat:pendingFood.fat*qty,source:pendingFood.source||'off',addedAt:new Date().toISOString()});
   saveLogData();renderAll();closeModal();showToast(`Added to ${selectedMeal}`);
-  if(settings.sheetURL)syncToSheets();
 }
-
-// ---- BARCODE SCANNER (search tab) ----
+ (search tab) ----
 document.getElementById('scanBtn').addEventListener('click',toggleScanner);
 async function toggleScanner(){
   if(scannerActive){stopScanner();return;}
@@ -775,7 +773,6 @@ function saveManualToMyFoods(){
   saveCustomData();
   showToast('Saved to My Foods');
   clearManualForm();
-  if(settings.sheetURL) syncCustomFoods();
 }
 function addManualToLog(){
   const f=getManualFood();
@@ -785,7 +782,6 @@ function addManualToLog(){
   e[selectedMeal].push({name:f.name,brand:f.brand,servingSize:f.servingSize,servingQty:qty,calories:f.calories*qty,protein:f.protein*qty,carbs:f.carbs*qty,fat:f.fat*qty,source:'custom',addedAt:new Date().toISOString()});
   saveLogData();renderAll();closeModal();showToast(`Added to ${selectedMeal}`);
   clearManualForm();
-  if(settings.sheetURL) syncToSheets();
 }
 
 // ---- SAVE / ADD CUSTOM FOOD ----
@@ -795,14 +791,12 @@ function saveCustomFood(){
   const existIdx=f.barcode?customFoods.findIndex(cf=>cf.barcode===f.barcode):-1;
   if(existIdx>=0){customFoods[existIdx]={...customFoods[existIdx],...f,updatedAt:new Date().toISOString()};showToast('Custom food updated');}
   else{customFoods.push({...f,id:'cf_'+Date.now(),createdAt:new Date().toISOString()});showToast('Saved to My Foods');}
-  saveCustomData();if(settings.sheetURL)syncCustomFoods();
-}
+  saveCustomData();}
 function addLabelToLog(){
   const f=getFormFood(),qty=parseFloat(document.getElementById('labelServingQty').value)||1;
   const e=todayEntries();
   e[selectedMeal].push({name:f.name,brand:f.brand,servingSize:f.servingSize,servingQty:qty,calories:f.calories*qty,protein:f.protein*qty,carbs:f.carbs*qty,fat:f.fat*qty,source:'custom',addedAt:new Date().toISOString()});
   saveLogData();renderAll();closeModal();showToast(`Added to ${selectedMeal}`);
-  if(settings.sheetURL)syncToSheets();
 }
 
 // ---- MY FOODS TAB ----
@@ -812,24 +806,29 @@ function renderCustomFoodsList(){
   empty.style.display='none';
   c.innerHTML=customFoods.map((cf,i)=>`<div class="custom-food-item"><div class="custom-food-info"><div class="cf-name">${cf.name}${cf.barcode?`<span class="barcode-tag">▦ ${cf.barcode}</span>`:''}</div><div class="cf-meta">${cf.brand?cf.brand+' · ':''}${cf.servingSize} · P${cf.protein}g C${cf.carbs}g F${cf.fat}g</div></div><div class="custom-food-cals">${cf.calories}</div><button class="cf-add-btn" onclick="addCustomFoodToLog(${i})">+ Add</button><button class="cf-del-btn" onclick="deleteCustomFood(${i})">×</button></div>`).join('');
 }
-function addCustomFoodToLog(idx){const cf=customFoods[idx];const e=todayEntries();e[selectedMeal].push({name:cf.name,brand:cf.brand,servingSize:cf.servingSize,servingQty:1,calories:cf.calories,protein:cf.protein,carbs:cf.carbs,fat:cf.fat,source:'custom',addedAt:new Date().toISOString()});saveLogData();renderAll();closeModal();showToast(`${cf.name} added to ${selectedMeal}`);if(settings.sheetURL)syncToSheets();}
+function addCustomFoodToLog(idx){const cf=customFoods[idx];const e=todayEntries();e[selectedMeal].push({name:cf.name,brand:cf.brand,servingSize:cf.servingSize,servingQty:1,calories:cf.calories,protein:cf.protein,carbs:cf.carbs,fat:cf.fat,source:'custom',addedAt:new Date().toISOString()});saveLogData();renderAll();closeModal();showToast(`${cf.name} added to ${selectedMeal}`);}
 function deleteCustomFood(idx){customFoods.splice(idx,1);saveCustomData();renderCustomFoodsList();showToast('Removed from My Foods');}
 
 // ---- SHEETS SYNC ----
-async function syncToSheets(){
+async function syncToSheets(silent=false){
   if(!settings.sheetURL)return;
-  document.getElementById('syncBtn').textContent='⬆ syncing...';
   const e=todayEntries(),rows=[];
   MEALS.forEach(meal=>(e[meal]||[]).forEach(item=>rows.push({date:dateKey(),meal,food:item.name,brand:item.brand||'',servings:item.servingQty,servingSize:item.servingSize||'',calories:Math.round(item.calories),protein:Math.round(item.protein),carbs:Math.round(item.carbs),fat:Math.round(item.fat),source:item.source||'off',loggedAt:item.addedAt})));
-  try{await fetch(settings.sheetURL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'syncLog',sheetName:settings.sheetName,rows,date:dateKey()})});showToast('Synced to Google Sheets ✓');}
-  catch(e){showToast('Sync failed');}
-  document.getElementById('syncBtn').textContent='⬆ sync';
+  try{await fetch(settings.sheetURL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'syncLog',sheetName:settings.sheetName,rows,date:dateKey()})});}
+  catch(e){if(!silent)showToast('Log sync failed');}
 }
-async function syncCustomFoods(){
+async function syncCustomFoods(silent=false){
   if(!settings.sheetURL)return;
-  try{await fetch(settings.sheetURL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'syncCustomFoods',sheetName:settings.customSheetName,foods:customFoods})});showToast('Custom foods synced ✓');}catch(e){}
+  try{await fetch(settings.sheetURL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'syncCustomFoods',sheetName:settings.customSheetName,foods:customFoods})});}
+  catch(e){if(!silent)showToast('Custom foods sync failed');}
 }
-document.getElementById('syncBtn').onclick=()=>{syncToSheets();if(customFoods.length)syncCustomFoods();};
+document.getElementById('syncBtn').onclick=async()=>{
+  document.getElementById('syncBtn').textContent='⬆ syncing...';
+  await syncToSheets(true);
+  if(customFoods.length) await syncCustomFoods(true);
+  showToast('Synced to Google Sheets ✓');
+  document.getElementById('syncBtn').textContent='⬆ sync';
+};
 
 // ---- TOAST ----
 function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500);}
