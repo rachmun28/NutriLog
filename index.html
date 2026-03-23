@@ -811,23 +811,23 @@ function addCustomFoodToLog(idx){const cf=customFoods[idx];const e=todayEntries(
 function deleteCustomFood(idx){customFoods.splice(idx,1);saveCustomData();renderCustomFoodsList();showToast('Removed from My Foods');}
 
 // ---- SHEETS SYNC ----
-async function syncToSheets(silent=false){
+async function syncToSheets(){
   if(!settings.sheetURL)return;
   const e=todayEntries(),rows=[];
   MEALS.forEach(meal=>(e[meal]||[]).forEach(item=>rows.push({date:dateKey(),meal,food:item.name,brand:item.brand||'',servings:item.servingQty,servingSize:item.servingSize||'',calories:Math.round(item.calories),protein:Math.round(item.protein),carbs:Math.round(item.carbs),fat:Math.round(item.fat),source:item.source||'off',loggedAt:item.addedAt})));
-  try{await fetch(settings.sheetURL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'syncLog',sheetName:settings.sheetName,rows,date:dateKey()})});}
-  catch(e){if(!silent)showToast('Log sync failed');}
+  await fetch(settings.sheetURL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'syncLog',sheetName:settings.sheetName,rows,date:dateKey()})});
 }
-async function syncCustomFoods(silent=false){
+async function syncCustomFoods(){
   if(!settings.sheetURL)return;
-  try{await fetch(settings.sheetURL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'syncCustomFoods',sheetName:settings.customSheetName,foods:customFoods})});}
-  catch(e){if(!silent)showToast('Custom foods sync failed');}
+  await fetch(settings.sheetURL,{method:'POST',mode:'no-cors',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'syncCustomFoods',customSheetName:settings.customSheetName,foods:customFoods})});
 }
 document.getElementById('syncBtn').onclick=async()=>{
   document.getElementById('syncBtn').textContent='⬆ syncing...';
-  await syncToSheets(true);
-  if(customFoods.length) await syncCustomFoods(true);
-  showToast('Synced to Google Sheets ✓');
+  let logOk=true, foodsOk=true;
+  try{ await syncToSheets(); } catch(e){ logOk=false; console.error('log sync error',e); }
+  if(customFoods.length){ try{ await syncCustomFoods(); } catch(e){ foodsOk=false; console.error('foods sync error',e); } }
+  if(!logOk||!foodsOk) showToast('⚠ Sync error — check console');
+  else showToast('Synced to Google Sheets ✓');
   document.getElementById('syncBtn').textContent='⬆ sync';
 };
 
@@ -859,7 +859,7 @@ const APPS_SCRIPT=`function doPost(e) {
     }
 
     if (data.action === 'syncCustomFoods') {
-      var cs = ss.getSheetByName(data.sheetName) || ss.insertSheet(data.sheetName);
+      var cs = ss.getSheetByName(data.customSheetName) || ss.insertSheet(data.customSheetName);
       cs.clearContents();
       cs.appendRow(["ID","Name","Brand","Serving Size","Calories","Protein (g)","Carbs (g)","Fat (g)","Fibre (g)","Sodium (mg)","Barcode","Created At"]);
       cs.getRange(1,1,1,12).setFontWeight("bold");
