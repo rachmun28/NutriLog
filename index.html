@@ -306,7 +306,8 @@
     </div>
     <div class="tab-row">
       <button class="tab-btn active" onclick="switchTab('search')">Search</button>
-      <button class="tab-btn" onclick="switchTab('label')">📷 Label scan</button>
+      <button class="tab-btn" onclick="switchTab('manual')">✏️ Manual</button>
+      <button class="tab-btn" onclick="switchTab('label')">📷 Label</button>
       <button class="tab-btn" onclick="switchTab('custom')">My foods</button>
     </div>
 
@@ -342,6 +343,33 @@
         <div class="confirm-btns">
           <button class="btn-secondary" onclick="backToSearch()">← Back</button>
           <button class="btn-primary" onclick="addFoodEntry()">Add to log</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MANUAL ENTRY TAB -->
+    <div class="tab-pane" id="tab-manual">
+      <div class="label-scan-area">
+        <div style="font-size:12px;color:var(--muted);font-family:var(--mono);margin-bottom:14px;">Enter nutrition info manually</div>
+        <div class="editable-field"><label>Food name *</label><input type="text" id="manualName" placeholder="e.g. Chicken breast"></div>
+        <div class="editable-field"><label>Brand</label><input type="text" id="manualBrand" placeholder="Optional"></div>
+        <div class="editable-field"><label>Serving size</label><input type="text" id="manualServingSize" placeholder="e.g. 100g, 1 cup, 1 piece"></div>
+        <div class="editable-grid">
+          <div class="editable-field"><label>Calories (kcal) *</label><input type="number" id="manualCalories" placeholder="0" min="0"></div>
+          <div class="editable-field"><label>Protein (g)</label><input type="number" id="manualProtein" placeholder="0" min="0" step="0.1"></div>
+          <div class="editable-field"><label>Carbs (g)</label><input type="number" id="manualCarbs" placeholder="0" min="0" step="0.1"></div>
+          <div class="editable-field"><label>Fat (g)</label><input type="number" id="manualFat" placeholder="0" min="0" step="0.1"></div>
+          <div class="editable-field"><label>Fibre (g)</label><input type="number" id="manualFiber" placeholder="0" min="0" step="0.1"></div>
+          <div class="editable-field"><label>Sodium (mg)</label><input type="number" id="manualSodium" placeholder="0" min="0" step="1"></div>
+        </div>
+        <div class="serving-row" style="margin-top:4px;">
+          <label>Servings</label>
+          <input type="number" id="manualServingQty" value="1" min="0.25" step="0.25">
+          <span style="font-size:12px;color:var(--muted);font-family:var(--mono);">serving(s)</span>
+        </div>
+        <div class="label-action-btns" style="margin-top:16px;">
+          <button class="save-custom-btn" onclick="saveManualToMyFoods()">💾 Save to My Foods</button>
+          <button class="add-log-from-label-btn" onclick="addManualToLog()">+ Add to log</button>
         </div>
       </div>
     </div>
@@ -415,7 +443,7 @@
       <div class="custom-foods-area">
         <div id="customFoodsList"></div>
         <div id="customFoodsEmpty" style="text-align:center;padding:28px;color:var(--muted);font-size:13px;font-family:var(--mono);display:none;">
-          No custom foods yet.<br>Use the Label scan tab to add some.
+          No custom foods yet.<br>Use the ✏️ Manual or 📷 Label tab to add some.
         </div>
       </div>
     </div>
@@ -557,8 +585,6 @@ function openAddFood(meal){
   document.getElementById('foodConfirm').classList.remove('active');
   renderMealChips();
   document.getElementById('modalTitle').textContent='Add food';
-  if(!settings.apiKey) document.getElementById('apiKeyBanner').style.display='flex';
-  else document.getElementById('apiKeyBanner').style.display='none';
   if(activeTab==='custom') renderCustomFoodsList();
   setTimeout(()=>document.getElementById('searchInput').focus(),200);
 }
@@ -568,12 +594,14 @@ function closeModal(){
 }
 function switchTab(tab){
   activeTab=tab;
-  ['search','label','custom'].forEach((t,i)=>{
+  const tabs=['search','manual','label','custom'];
+  tabs.forEach((t,i)=>{
     document.querySelectorAll('.tab-btn')[i].classList.toggle('active',t===tab);
     document.getElementById('tab-'+t).classList.toggle('active',t===tab);
   });
   if(tab==='custom') renderCustomFoodsList();
   if(tab!=='label'){stopLabelCamera();stopLabelBarcodeScanner();}
+  if(tab==='manual') setTimeout(()=>document.getElementById('manualName').focus(),100);
 }
 function renderMealChips(){
   const c=document.getElementById('mealChips');c.innerHTML='';
@@ -721,6 +749,44 @@ async function toggleLabelBarcodeScanner(){
   }catch(e){showToast('Camera unavailable');stopLabelBarcodeScanner();}
 }
 function stopLabelBarcodeScanner(){if(labelBarcodeReader){try{labelBarcodeReader.reset();}catch(e){}labelBarcodeReader=null;}labelBarcodeActive=false;document.getElementById('labelBarcodeBtn').textContent='▦ Scan';const t=document.getElementById('tmpBcVid');if(t)t.remove();}
+
+// ---- MANUAL ENTRY ----
+function getManualFood(){
+  return {
+    name: document.getElementById('manualName').value.trim() || 'Unnamed food',
+    brand: document.getElementById('manualBrand').value.trim(),
+    servingSize: document.getElementById('manualServingSize').value.trim() || '1 serving',
+    calories: parseFloat(document.getElementById('manualCalories').value) || 0,
+    protein: parseFloat(document.getElementById('manualProtein').value) || 0,
+    carbs: parseFloat(document.getElementById('manualCarbs').value) || 0,
+    fat: parseFloat(document.getElementById('manualFat').value) || 0,
+    fiber: parseFloat(document.getElementById('manualFiber').value) || 0,
+    sodium: parseFloat(document.getElementById('manualSodium').value) || 0,
+  };
+}
+function clearManualForm(){
+  ['manualName','manualBrand','manualServingSize','manualCalories','manualProtein','manualCarbs','manualFat','manualFiber','manualSodium'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('manualServingQty').value=1;
+}
+function saveManualToMyFoods(){
+  const f=getManualFood();
+  if(!f.name||f.name==='Unnamed food'){showToast('Please enter a food name');return;}
+  customFoods.push({...f,id:'cf_'+Date.now(),createdAt:new Date().toISOString()});
+  saveCustomData();
+  showToast('Saved to My Foods');
+  clearManualForm();
+  if(settings.sheetURL) syncCustomFoods();
+}
+function addManualToLog(){
+  const f=getManualFood();
+  if(!f.calories&&!f.name){showToast('Please enter at least a name and calories');return;}
+  const qty=parseFloat(document.getElementById('manualServingQty').value)||1;
+  const e=todayEntries();
+  e[selectedMeal].push({name:f.name,brand:f.brand,servingSize:f.servingSize,servingQty:qty,calories:f.calories*qty,protein:f.protein*qty,carbs:f.carbs*qty,fat:f.fat*qty,source:'custom',addedAt:new Date().toISOString()});
+  saveLogData();renderAll();closeModal();showToast(`Added to ${selectedMeal}`);
+  clearManualForm();
+  if(settings.sheetURL) syncToSheets();
+}
 
 // ---- SAVE / ADD CUSTOM FOOD ----
 function getFormFood(){return{name:document.getElementById('labelName').value.trim()||'Unnamed food',brand:document.getElementById('labelBrand').value.trim(),servingSize:document.getElementById('labelServingSize').value.trim()||'1 serving',calories:parseFloat(document.getElementById('labelCalories').value)||0,protein:parseFloat(document.getElementById('labelProtein').value)||0,carbs:parseFloat(document.getElementById('labelCarbs').value)||0,fat:parseFloat(document.getElementById('labelFat').value)||0,fiber:parseFloat(document.getElementById('labelFiber').value)||0,sodium:parseFloat(document.getElementById('labelSodium').value)||0,barcode:document.getElementById('labelBarcode').value.trim()||null};}
