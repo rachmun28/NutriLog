@@ -685,48 +685,58 @@ async function doSearch(){
   const q=document.getElementById('sInp').value.trim();if(!q)return;
   showR('<div class="msg">Searching…</div>');
   const isBC=/^\d{8,14}$/.test(q);
-  try{
-    // Search custom My Foods
+  
+  try {
+    // 1. Instantly search custom My Foods
     const cf=FOODS.filter(f=>f.name.toLowerCase().includes(q.toLowerCase())||(f.barcode&&f.barcode===q));
-    // Search built-in Whole Foods
+    // 2. Instantly search built-in Whole Foods
     const wf=WHOLE_FOODS.filter(f=>f.name.toLowerCase().includes(q.toLowerCase()));
     
     if(isBC){
       const hit=FOODS.find(f=>f.barcode===q);
       if(hit){renderHits([norm(hit)],1);return;}
-      const off=await fetchOFF(q,true);renderHits(off,0);
+      const off=await fetchOFF(q,true);
+      renderHits(off,0);
     } else {
+      // 3. Try to fetch from Open Food Facts (will safely return empty array if OFF is down)
       const off=await fetchOFF(q,false);
-      // Combine results: My Foods -> Built-in Whole Foods -> OFF API results
-      renderHits([...cf.map(norm), ...wf.map(norm), ...off], cf.length + wf.length);
+      
+      const combined = [...cf.map(norm), ...wf.map(norm), ...off];
+      
+      if (combined.length === 0) {
+        showR('<div class="msg">No results found.<br><br><small style="color:var(--mu2)">Note: The Open Food Facts online database is currently unavailable. Try logging a custom food via the Manual tab.</small></div>');
+      } else {
+        renderHits(combined, cf.length + wf.length);
+      }
     }
-  }catch(err){
-    console.error("Search error:", err);
-    showR('<div class="msg">Search failed.<br><br><small style="color:var(--mu2)">The Open Food Facts database might be temporarily down or rate-limiting requests. Try logging a custom food via the Manual tab for now.</small></div>');
+  } catch(err) {
+    console.error("Critical Search Error:", err);
+    showR('<div class="msg">Search failed.</div>');
   }
 }
 
 async function fetchOFF(q, bc) {
   try {
     if (bc) {
-      // Barcode lookup (V2 API works perfectly for this)
+      // Barcode lookup
       const url = `https://world.openfoodfacts.org/api/v2/product/${q}.json`;
       const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
-      if (!r.ok) throw new Error(`API returned HTTP ${r.status}`);
+      if (!r.ok) return []; // Safely fail instead of throwing an error
       const d = await r.json();
       return (d.status === 1 && d.product) ? [normOFF(d.product)] : [];
     }
     
-    // Text search (Must use the cgi/search.pl endpoint for text queries)
+    // Text search
     const searchUrl = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&search_simple=1&action=process&json=1&page_size=15&fields=product_name,brands,nutriments,serving_size,serving_quantity`;
     const r = await fetch(searchUrl, { headers: { 'Accept': 'application/json' } });
-    if (!r.ok) throw new Error(`API returned HTTP ${r.status}`);
+    if (!r.ok) return []; // Safely fail instead of throwing an error
     const d = await r.json();
     return (d.products || []).filter(p => p.product_name && p.nutriments).map(normOFF);
     
   } catch (err) {
-    console.error("Open Food Facts Fetch Failed:", err);
-    throw err; 
+    // If the network request completely fails (like a CORS block or 503), catch it here!
+    console.warn("Open Food Facts API unavailable, relying on local foods.");
+    return []; // Return an empty array so the local search results can still render
   }
 }
 function normOFF(p){
