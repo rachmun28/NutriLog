@@ -186,6 +186,7 @@ body{font-family:var(--b);background:var(--bg);color:var(--tx);-webkit-font-smoo
 .stag{font-size:9px;background:var(--s1);border:1px solid var(--b2);border-radius:4px;padding:1px 4px;font-family:var(--h);color:var(--mu);margin-left:4px;vertical-align:middle}
 .stag.mine{background:var(--pu-d);color:var(--pu);border-color:#3a1a5c}
 .stag.wf{background:var(--gr-d);color:var(--gr);border-color:#1a5c32}
+.stag.usda{background:var(--bl-d);color:var(--bl);border-color:#1a355c}
 .msg{text-align:center;padding:24px;color:var(--mu);font-size:13px;font-family:var(--h)}
 
 /* confirm */
@@ -736,9 +737,8 @@ async function doSearch(){
   const isBC=/^\d{8,14}$/.test(q);
   
   try {
-    // 1. Instantly search custom My Foods
+    // 1. Instantly search custom My Foods & Whole Foods
     const cf=FOODS.filter(f=>f.name.toLowerCase().includes(q.toLowerCase())||(f.barcode&&f.barcode===q));
-    // 2. Instantly search built-in Whole Foods
     const wf=WHOLE_FOODS.filter(f=>f.name.toLowerCase().includes(q.toLowerCase()));
     
     if(isBC){
@@ -747,13 +747,19 @@ async function doSearch(){
       const off=await fetchOFF(q,true);
       renderHits(off,0);
     } else {
-      // 3. Try to fetch from Open Food Facts (will safely return empty array if OFF is down)
-      const off=await fetchOFF(q,false);
+      // 2. Try Open Food Facts
+      let apiResults = await fetchOFF(q,false);
       
-      const combined = [...cf.map(norm), ...wf.map(norm), ...off];
+      // 3. FALLBACK: If OFF fails or finds nothing, try USDA FoodData Central
+      if (apiResults.length === 0) {
+        console.log("OFF empty or failed. Falling back to USDA...");
+        apiResults = await fetchUSDA(q);
+      }
+      
+      const combined = [...cf.map(norm), ...wf.map(norm), ...apiResults];
       
       if (combined.length === 0) {
-        showR('<div class="msg">No results found.<br><br><small style="color:var(--mu2)">Note: The Open Food Facts online database is currently unavailable. Try logging a custom food via the Manual tab.</small></div>');
+        showR('<div class="msg">No results found in any database.<br><br><small style="color:var(--mu2)">Try checking your spelling or log it via the Manual tab.</small></div>');
       } else {
         renderHits(combined, cf.length + wf.length);
       }
@@ -764,30 +770,59 @@ async function doSearch(){
   }
 }
 
+// Open Food Facts API
 async function fetchOFF(q, bc) {
   try {
     if (bc) {
-      // Barcode lookup
-      const url = `https://world.openfoodfacts.org/api/v2/product/${q}.json`;
-      const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
-      if (!r.ok) return []; // Safely fail instead of throwing an error
+      const r = await fetch(`https://world.openfoodfacts.org/api/v2/product/${q}.json`, { headers: { 'Accept': 'application/json' } });
+      if (!r.ok) return []; 
       const d = await r.json();
       return (d.status === 1 && d.product) ? [normOFF(d.product)] : [];
     }
-    
-    // Text search
-    const searchUrl = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&search_simple=1&action=process&json=1&page_size=15&fields=product_name,brands,nutriments,serving_size,serving_quantity`;
-    const r = await fetch(searchUrl, { headers: { 'Accept': 'application/json' } });
-    if (!r.ok) return []; // Safely fail instead of throwing an error
+    const r = await fetch(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&search_simple=1&action=process&json=1&page_size=10&fields=product_name,brands,nutriments,serving_size,serving_quantity`, { headers: { 'Accept': 'application/json' } });
+    if (!r.ok) return []; 
     const d = await r.json();
     return (d.products || []).filter(p => p.product_name && p.nutriments).map(normOFF);
-    
   } catch (err) {
-    // If the network request completely fails (like a CORS block or 503), catch it here!
-    console.warn("Open Food Facts API unavailable, relying on local foods.");
-    return []; // Return an empty array so the local search results can still render
+    return []; // Safely fail
   }
 }
+
+// USDA FoodData Central API (Fallback)
+async function fetchUSDA(q) {
+  try {
+    // Using DEMO_KEY for light personal usage
+    const r = await fetch(`https://api.nal.usda.gov/fdc/v1/foods/search?query=${encodeURIComponent(q)}&api_key=DEMO_KEY&pageSize=10`);
+    if (!r.ok) return [];
+    const d = await r.json();
+    
+    return (d.foods || []).map(f => {
+      // Helper to find specific nutrients in USDA's array format
+      const nut = (id) => {
+        const n = f.foodNutrients.find(x => x.nutrientId === id);
+        return n ? n.value : 0;
+      };
+      
+      // USDA serving sizes can be messy; default to 100g if missing
+      const size = f.servingSize ? `${f.servingSize}${f.servingSizeUnit || 'g'}` : '100g';
+      
+      return {
+        name: f.description,
+        brand: f.brandOwner || '',
+        size: size,
+        cal: Math.round(nut(1008)), // Energy
+        pro: +(nut(1003).toFixed(1)), // Protein
+        carb: +(nut(1005).toFixed(1)), // Carbs
+        fat: +(nut(1004).toFixed(1)), // Fat
+        src: 'usda'
+      };
+    });
+  } catch (err) {
+    console.warn("USDA fetch failed:", err);
+    return [];
+  }
+}
+
 function normOFF(p){
   const n=p.nutriments||{},sz=parseFloat(p.serving_quantity)||100;
   const s=f=>+(parseFloat(n[f+'_serving']||(parseFloat(n[f+'_100g']||0)*sz/100))).toFixed(1);
@@ -802,6 +837,7 @@ function renderHits(items,nc){
     let tagText = 'OFF', tagClass = '';
     if (it.src === 'custom') { tagText = 'mine'; tagClass = ' mine'; }
     if (it.src === 'builtin') { tagText = 'whole food'; tagClass = ' wf'; }
+    if (it.src === 'usda') { tagText = 'USDA'; tagClass = ' usda'; }
     
     return `
     <div class="ri" onclick="pick(${i})">
