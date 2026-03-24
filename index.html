@@ -682,9 +682,9 @@ async function doSearch(){
 }
 
 async function fetchOFF(q, bc) {
-  // We use the newer v2 API which is much faster and less prone to rate-limiting
   try {
     if (bc) {
+      // Barcode lookup (V2 API works perfectly for this)
       const url = `https://world.openfoodfacts.org/api/v2/product/${q}.json`;
       const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
       if (!r.ok) throw new Error(`API returned HTTP ${r.status}`);
@@ -692,8 +692,8 @@ async function fetchOFF(q, bc) {
       return (d.status === 1 && d.product) ? [normOFF(d.product)] : [];
     }
     
-    // V2 Search endpoint
-    const searchUrl = `https://world.openfoodfacts.org/api/v2/search?search_terms=${encodeURIComponent(q)}&fields=product_name,brands,nutriments,serving_size,serving_quantity&page_size=15`;
+    // Text search (Must use the cgi/search.pl endpoint for text queries)
+    const searchUrl = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&search_simple=1&action=process&json=1&page_size=15&fields=product_name,brands,nutriments,serving_size,serving_quantity`;
     const r = await fetch(searchUrl, { headers: { 'Accept': 'application/json' } });
     if (!r.ok) throw new Error(`API returned HTTP ${r.status}`);
     const d = await r.json();
