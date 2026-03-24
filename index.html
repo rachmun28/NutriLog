@@ -113,16 +113,29 @@ body{font-family:var(--b);background:var(--bg);color:var(--tx);-webkit-font-smoo
 .badge{font-size:9px;background:var(--pu-d);color:var(--pu);border-radius:4px;padding:1px 4px;font-family:var(--h);margin-left:4px;vertical-align:middle}
 
 /* ── SHEET ── */
-.ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:200;align-items:flex-end;justify-content:center}
+.ov{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.65);z-index:200;align-items:flex-end;justify-content:center}
 .ov.on{display:flex}
-.sheet{background:var(--s1);border-radius:22px 22px 0 0;width:100%;max-width:600px;max-height:92dvh;overflow-y:auto;overflow-x:hidden;padding-bottom:calc(20px + var(--sb));animation:sup .28s cubic-bezier(.32,.72,0,1)}
+.sheet{
+  background:var(--s1);
+  border-radius:22px 22px 0 0;
+  width:100%;
+  max-width:600px;
+  /* Safer max-height for mobile keyboards */
+  max-height:82vh; 
+  max-height:82dvh;
+  overflow-y:auto;
+  overflow-x:hidden;
+  /* Extra bottom padding to push buttons above the home bar/keyboard */
+  padding-bottom:calc(80px + env(safe-area-inset-bottom, 20px)); 
+  animation:sup .28s cubic-bezier(.32,.72,0,1)
+}
 @keyframes sup{from{transform:translateY(100%)}to{transform:translateY(0)}}
 .sh{width:36px;height:4px;background:var(--b2);border-radius:2px;margin:11px auto 0}
 .s-hd{display:flex;align-items:center;justify-content:space-between;padding:13px 18px 10px}
 .s-t{font-family:var(--h);font-size:17px;font-weight:700}
 .s-x{background:var(--s2);border:1px solid var(--b1);border-radius:50%;width:30px;height:30px;cursor:pointer;color:var(--mu);font-size:14px;display:flex;align-items:center;justify-content:center}
 
-/* chips */
+  /* chips */
 .chips{display:flex;gap:6px;padding:0 16px 11px;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch}
 .chips::-webkit-scrollbar{display:none}
 .chip{flex-shrink:0;background:var(--s2);border:1px solid var(--b1);border-radius:20px;padding:5px 13px;font-size:12px;font-family:var(--h);font-weight:600;cursor:pointer;color:var(--mu);transition:all .15s}
@@ -132,7 +145,8 @@ body{font-family:var(--b);background:var(--bg);color:var(--tx);-webkit-font-smoo
 .tabs{display:flex;border-bottom:1px solid var(--b1);padding:0 16px;justify-content:space-between}
 .tab{background:none;border:none;border-bottom:2px solid transparent;padding:9px 5px;font-size:12px;font-family:var(--h);font-weight:600;cursor:pointer;color:var(--mu);margin-bottom:-1px;transition:all .15s;flex:1;text-align:center}
 .tab.on{color:var(--gr);border-bottom-color:var(--gr)}
-.tb{display:none;padding:13px 16px}
+/* Replace your current .tb rule with this: */
+.tb{display:none;padding:13px 16px 30px}
 .tb.on{display:block}
 
 /* search */
