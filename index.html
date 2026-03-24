@@ -628,55 +628,81 @@ function goTab(t){
 // ═══════════════════════════════════════
 function renderRecent(){
   const c = document.getElementById('recentList');
-  const recents = [];
+  let allRecent = [];
   const seen = new Set();
   const today = new Date();
   
-  // Look back 7 days
-  for(let i=0; i<7; i++){
-    const d = new Date(today);
-    d.setDate(d.getDate() - i);
-    const dStr = d.toISOString().slice(0,10);
-    
-    if(LOG[dStr]){
-      MEALS.forEach(m => {
-        (LOG[dStr][m]||[]).forEach(it => {
-          // Unique key based on name and brand to avoid cluttering the list
-          const key = it.name.toLowerCase() + '|' + (it.brand||'').toLowerCase();
-          if(!seen.has(key)){
-            seen.add(key);
-            recents.push(it);
-          }
+  try {
+    // 1. Collect every single logged food from the last 7 days
+    for(let i=0; i<7; i++){
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      const dStr = d.toISOString().slice(0,10);
+      
+      if(LOG[dStr]){
+        MEALS.forEach(m => {
+          (LOG[dStr][m]||[]).forEach(it => {
+            allRecent.push(it);
+          });
         });
-      });
+      }
     }
-  }
 
-  if(!recents.length){
-    c.innerHTML = '<div class="msg">No recently logged foods.<br>Items will appear here as you log them.</div>';
-    return;
-  }
+    // 2. Sort them by exact time logged (newest first)
+    allRecent.sort((a, b) => (b.t || 0) - (a.t || 0));
 
-  c.innerHTML = recents.map((f,i) => `
-    <div class="mfi">
-      <div class="mfi-i">
-        <div class="mfi-n">${f.name}</div>
-        <div class="mfi-m">${f.brand ? f.brand + ' · ' : ''}${f.qty}× ${f.size} · P${Math.round(f.pro)}g C${Math.round(f.carb)}g F${Math.round(f.fat)}g</div>
-      </div>
-      <div class="mfi-c">${Math.round(f.cal)}</div>
-      <button class="mfi-a" onclick="addRecent(${i})">+ Add</button>
-    </div>`).join('');
-  
-  window._recents = recents;
+    // 3. Remove duplicates so your list is clean
+    const uniqueRecents = [];
+    allRecent.forEach(it => {
+      // Safely grab the name (prevents crashes on older/imported foods)
+      const name = (it.name || 'Unnamed Food').toLowerCase();
+      const brand = (it.brand || '').toLowerCase();
+      const key = name + '|' + brand;
+      
+      if(!seen.has(key)){
+        seen.add(key);
+        uniqueRecents.push(it);
+      }
+    });
+
+    if(!uniqueRecents.length){
+      c.innerHTML = '<div class="msg">No recently logged foods.<br>Items will appear here as you log them.</div>';
+      return;
+    }
+
+    // 4. Draw the list
+    c.innerHTML = uniqueRecents.map((f,i) => `
+      <div class="mfi">
+        <div class="mfi-i">
+          <div class="mfi-n">${f.name || 'Unnamed Food'}</div>
+          <div class="mfi-m">${f.brand ? f.brand + ' · ' : ''}${f.qty || 1}× ${f.size || 'serving'} · P${Math.round(f.pro||0)}g C${Math.round(f.carb||0)}g F${Math.round(f.fat||0)}g</div>
+        </div>
+        <div class="mfi-c">${Math.round(f.cal||0)}</div>
+        <button class="mfi-a" onclick="addRecent(${i})">+ Add</button>
+      </div>`).join('');
+    
+    window._recents = uniqueRecents;
+    
+  } catch (err) {
+    console.error("Recent tab error:", err);
+    c.innerHTML = '<div class="msg">Error loading recent foods. Try adding a new food to reset the list.</div>';
+  }
 }
 
 function addRecent(i){
   const f = window._recents[i];
   // Re-adding the identical item including the quantity previously logged to speed up workflows
   push({
-    name: f.name, brand: f.brand, size: f.size, qty: f.qty, 
-    cal: f.cal, pro: f.pro, carb: f.carb, fat: f.fat, 
-    src: f.src || 'recent', t: Date.now()
+    name: f.name || 'Unnamed Food', 
+    brand: f.brand || '', 
+    size: f.size || '1 serving', 
+    qty: f.qty || 1, 
+    cal: f.cal || 0, 
+    pro: f.pro || 0, 
+    carb: f.carb || 0, 
+    fat: f.fat || 0, 
+    src: f.src || 'recent', 
+    t: Date.now() // Give it a fresh timestamp so it jumps to the top next time
   });
 }
 // ═══════════════════════════════════════
