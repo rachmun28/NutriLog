@@ -164,6 +164,7 @@ body{font-family:var(--b);background:var(--bg);color:var(--tx);-webkit-font-smoo
 .ri-c small{display:block;font-size:10px;color:var(--mu)}
 .stag{font-size:9px;background:var(--s1);border:1px solid var(--b2);border-radius:4px;padding:1px 4px;font-family:var(--h);color:var(--mu);margin-left:4px;vertical-align:middle}
 .stag.mine{background:var(--pu-d);color:var(--pu);border-color:#3a1a5c}
+.stag.wf{background:var(--gr-d);color:var(--gr);border-color:#1a5c32}
 .msg{text-align:center;padding:24px;color:var(--mu);font-size:13px;font-family:var(--h)}
 
 /* confirm */
@@ -655,7 +656,26 @@ function addRecent(i){
     src: f.src || 'recent', t: Date.now()
   });
 }
-
+// ═══════════════════════════════════════
+//  BUILT-IN WHOLE FOODS
+// ═══════════════════════════════════════
+const WHOLE_FOODS = [
+  {name: "Banana", brand: "Whole Food", size: "1 medium (118g)", cal: 105, pro: 1.3, carb: 27, fat: 0.3, src: "builtin"},
+  {name: "Apple", brand: "Whole Food", size: "1 medium (182g)", cal: 95, pro: 0.5, carb: 25, fat: 0.3, src: "builtin"},
+  {name: "Egg", brand: "Whole Food", size: "1 large (50g)", cal: 72, pro: 6.3, carb: 0.4, fat: 4.8, src: "builtin"},
+  {name: "Chicken Breast", brand: "Raw", size: "100g", cal: 120, pro: 22.5, carb: 0, fat: 2.6, src: "builtin"},
+  {name: "Chicken Breast", brand: "Cooked", size: "100g", cal: 165, pro: 31, carb: 0, fat: 3.6, src: "builtin"},
+  {name: "Broccoli", brand: "Raw", size: "1 cup (91g)", cal: 31, pro: 2.6, carb: 6, fat: 0.3, src: "builtin"},
+  {name: "White Rice", brand: "Cooked", size: "1 cup (158g)", cal: 205, pro: 4.3, carb: 45, fat: 0.4, src: "builtin"},
+  {name: "Oats", brand: "Dry/Raw", size: "1/2 cup (40g)", cal: 150, pro: 5, carb: 27, fat: 2.5, src: "builtin"},
+  {name: "Salmon", brand: "Cooked", size: "100g", cal: 206, pro: 22, carb: 0, fat: 12, src: "builtin"},
+  {name: "Potato", brand: "Baked", size: "1 medium (173g)", cal: 161, pro: 4.3, carb: 37, fat: 0.2, src: "builtin"},
+  {name: "Avocado", brand: "Whole Food", size: "1/2 fruit (100g)", cal: 160, pro: 2, carb: 8.5, fat: 14.7, src: "builtin"},
+  {name: "Almonds", brand: "Whole Food", size: "1 oz (28g)", cal: 164, pro: 6, carb: 6, fat: 14, src: "builtin"},
+  {name: "Sweet Potato", brand: "Cooked", size: "1 medium (114g)", cal: 103, pro: 2, carb: 24, fat: 0.2, src: "builtin"},
+  {name: "Ground Beef 80/20", brand: "Cooked", size: "4 oz (113g)", cal: 287, pro: 28, carb: 0, fat: 19, src: "builtin"},
+  {name: "Olive Oil", brand: "Whole Food", size: "1 tbsp (15ml)", cal: 119, pro: 0, carb: 0, fat: 13.5, src: "builtin"}
+];
 // ═══════════════════════════════════════
 //  SEARCH
 // ═══════════════════════════════════════
@@ -666,14 +686,19 @@ async function doSearch(){
   showR('<div class="msg">Searching…</div>');
   const isBC=/^\d{8,14}$/.test(q);
   try{
+    // Search custom My Foods
     const cf=FOODS.filter(f=>f.name.toLowerCase().includes(q.toLowerCase())||(f.barcode&&f.barcode===q));
+    // Search built-in Whole Foods
+    const wf=WHOLE_FOODS.filter(f=>f.name.toLowerCase().includes(q.toLowerCase()));
+    
     if(isBC){
       const hit=FOODS.find(f=>f.barcode===q);
       if(hit){renderHits([norm(hit)],1);return;}
       const off=await fetchOFF(q,true);renderHits(off,0);
     } else {
       const off=await fetchOFF(q,false);
-      renderHits([...cf.map(norm),...off],cf.length);
+      // Combine results: My Foods -> Built-in Whole Foods -> OFF API results
+      renderHits([...cf.map(norm), ...wf.map(norm), ...off], cf.length + wf.length);
     }
   }catch(err){
     console.error("Search error:", err);
@@ -714,15 +739,21 @@ function norm(f){return{name:f.name,brand:f.brand||'',size:f.size||'1 serving',c
 
 function renderHits(items,nc){
   if(!items.length){showR('<div class="msg">No results found.</div>');return;}
-  const h=items.map((it,i)=>`
+  const h=items.map((it,i)=>{
+    let tagText = 'OFF', tagClass = '';
+    if (it.src === 'custom') { tagText = 'mine'; tagClass = ' mine'; }
+    if (it.src === 'builtin') { tagText = 'whole food'; tagClass = ' wf'; }
+    
+    return `
     <div class="ri" onclick="pick(${i})">
       <div class="ri-i">
-        <div class="ri-n">${it.name}<span class="stag${it.src==='custom'?' mine':''}">${it.src==='custom'?'mine':'OFF'}</span></div>
+        <div class="ri-n">${it.name}<span class="stag${tagClass}">${tagText}</span></div>
         ${it.brand?`<div class="ri-b">${it.brand}</div>`:''}
         <div class="ri-m">P${it.pro}g · C${it.carb}g · F${it.fat}g · per ${it.size}</div>
       </div>
       <div class="ri-c">${it.cal}<small>kcal</small></div>
-    </div>`).join('');
+    </div>`
+  }).join('');
   showR(h);window._hits=items;
 }
 function showR(h){document.getElementById('results').innerHTML=h;document.getElementById('confP').classList.remove('on');}
