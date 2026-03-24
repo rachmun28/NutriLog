@@ -675,16 +675,34 @@ async function doSearch(){
       const off=await fetchOFF(q,false);
       renderHits([...cf.map(norm),...off],cf.length);
     }
-  }catch{showR('<div class="msg">Search failed — check connection.</div>');}
+  }catch(err){
+    console.error("Search error:", err);
+    showR('<div class="msg">Search failed.<br><br><small style="color:var(--mu2)">The Open Food Facts database might be temporarily down or rate-limiting requests. Try logging a custom food via the Manual tab for now.</small></div>');
+  }
 }
 
-async function fetchOFF(q,bc){
-  if(bc){
-    const r=await fetch(`https://world.openfoodfacts.org/api/v0/product/${q}.json`);
-    const d=await r.json();return(d.status===1&&d.product)?[normOFF(d.product)]:[];
+async function fetchOFF(q, bc) {
+  // We use the newer v2 API which is much faster and less prone to rate-limiting
+  try {
+    if (bc) {
+      const url = `https://world.openfoodfacts.org/api/v2/product/${q}.json`;
+      const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+      if (!r.ok) throw new Error(`API returned HTTP ${r.status}`);
+      const d = await r.json();
+      return (d.status === 1 && d.product) ? [normOFF(d.product)] : [];
+    }
+    
+    // V2 Search endpoint
+    const searchUrl = `https://world.openfoodfacts.org/api/v2/search?search_terms=${encodeURIComponent(q)}&fields=product_name,brands,nutriments,serving_size,serving_quantity&page_size=15`;
+    const r = await fetch(searchUrl, { headers: { 'Accept': 'application/json' } });
+    if (!r.ok) throw new Error(`API returned HTTP ${r.status}`);
+    const d = await r.json();
+    return (d.products || []).filter(p => p.product_name && p.nutriments).map(normOFF);
+    
+  } catch (err) {
+    console.error("Open Food Facts Fetch Failed:", err);
+    throw err; 
   }
-  const r=await fetch(`https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(q)}&search_simple=1&action=process&json=1&page_size=8&fields=product_name,brands,nutriments,serving_size,serving_quantity`);
-  const d=await r.json();return(d.products||[]).filter(p=>p.product_name&&p.nutriments).map(normOFF);
 }
 function normOFF(p){
   const n=p.nutriments||{},sz=parseFloat(p.serving_quantity)||100;
