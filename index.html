@@ -150,7 +150,7 @@ body{font-family:var(--b);background:var(--bg);color:var(--tx);-webkit-font-smoo
 
 /* tabs */
 .tabs{display:flex;border-bottom:1px solid var(--b1);padding:0 16px;justify-content:space-between}
-.tab{background:none;border:none;border-bottom:2px solid transparent;padding:9px 5px;font-size:12px;font-family:var(--h);font-weight:600;cursor:pointer;color:var(--mu);margin-bottom:-1px;transition:all .15s;flex:1;text-align:center}
+.tab{background:none;border:none;border-bottom:2px solid transparent;padding:9px 3px;font-size:11px;font-family:var(--h);font-weight:600;cursor:pointer;color:var(--mu);margin-bottom:-1px;transition:all .15s;flex:1;text-align:center;white-space:nowrap}
 .tab.on{color:var(--gr);border-bottom-color:var(--gr)}
 /* Replace your current .tb rule with this: */
 .tb{display:none;padding:13px 16px 30px}
@@ -245,6 +245,15 @@ body{font-family:var(--b);background:var(--bg);color:var(--tx);-webkit-font-smoo
 .mfi-d{background:none;border:none;color:var(--mu2);font-size:17px;cursor:pointer;padding:3px;flex-shrink:0;line-height:1}
 .mfi-d:active{color:var(--rd)}
 .bc-t{font-size:9px;background:var(--gr-d);color:var(--gr);border-radius:4px;padding:1px 4px;font-family:var(--h);margin-left:3px}
+.scan-t{font-size:9px;background:var(--bl-d);color:var(--bl);border-radius:4px;padding:1px 4px;font-family:var(--h);margin-left:3px}
+/* edit button on logged food rows */
+.fr-e{background:none;border:none;color:var(--mu2);font-size:15px;cursor:pointer;padding:4px;flex-shrink:0;transition:color .15s;line-height:1}
+.fr-e:active{color:var(--bl)}
+/* frequent tab bits */
+.freq-ct{font-size:10px;color:var(--mu);font-family:var(--h);margin-left:6px;font-weight:600}
+.mfi-pin{background:none;border:none;color:var(--mu2);font-size:16px;cursor:pointer;padding:4px;flex-shrink:0;line-height:1;transition:color .15s}
+.mfi-pin.on{color:var(--am)}
+.mfi-pin:active{color:var(--am)}
 
 /* data screen */
 .da-row{display:flex;gap:8px}
@@ -379,9 +388,10 @@ body{font-family:var(--b);background:var(--bg);color:var(--tx);-webkit-font-smoo
   <div class="chips" id="chips"></div>
   <div class="tabs">
     <button class="tab on" onclick="goTab('search')">Search</button>
+    <button class="tab" onclick="goTab('frequent')">Frequent</button>
     <button class="tab" onclick="goTab('recent')">Recent</button>
     <button class="tab" onclick="goTab('manual')">Manual</button>
-    <button class="tab" onclick="goTab('myfoods')">My foods</button>
+    <button class="tab" onclick="goTab('myfoods')">My Foods</button>
   </div>
 
   <div class="tb on" id="tb-search">
@@ -408,6 +418,10 @@ body{font-family:var(--b);background:var(--bg);color:var(--tx);-webkit-font-smoo
         <button class="btn btn-g" style="width: auto; flex: 1;" onclick="doAdd()">Add to log</button>
       </div>
     </div>
+  </div>
+
+  <div class="tb" id="tb-frequent">
+    <div id="freqList"></div>
   </div>
 
   <div class="tb" id="tb-recent">
@@ -446,6 +460,26 @@ body{font-family:var(--b);background:var(--bg);color:var(--tx);-webkit-font-smoo
 </div>
 </div>
 
+<div class="ov" id="portOv">
+<div class="sheet" style="padding-bottom:calc(24px + env(safe-area-inset-bottom,16px))">
+  <div class="sh"></div>
+  <div class="s-hd"><div class="s-t" id="portTitle">Adjust portion</div><button class="s-x" onclick="closePort()">✕</button></div>
+  <div style="padding:4px 18px 8px">
+    <div class="cf-n" id="portN"></div>
+    <div class="cf-b" id="portB"></div>
+    <div class="mpills" id="portM"></div>
+    <div style="font-size:11px;color:var(--mu);font-family:var(--h);margin-bottom:10px" id="portS"></div>
+    <div class="qty-r">
+      <button class="qty-btn" onclick="portAdj(-.5)">−</button>
+      <input class="inp qty-inp" type="number" id="portQ" value="1" min=".25" step=".25" oninput="portRefresh()">
+      <div class="qty-u" id="portU">× serving</div>
+      <button class="qty-btn" onclick="portAdj(.5)">+</button>
+    </div>
+    <button class="btn btn-g" id="portSave" onclick="portSave()">Add to log</button>
+  </div>
+</div>
+</div>
+
 <div class="sm-ov" id="guideOv">
 <div class="sm-inner">
   <div class="sh" style="margin-bottom:12px"></div>
@@ -474,9 +508,11 @@ const MOJI={Breakfast:'🌅',Lunch:'☀️',Dinner:'🌙',Snacks:'🍎'};
 let CFG={goalCal:2000,goalP:150,goalC:200,goalF:65,sheetURL:''};
 let LOG={};    // {dateStr:{Breakfast:[...], ...}}
 let FOODS=[];  // custom foods
+let USAGE={};  // frequently-used DB: {key:{name,brand,size,cal,pro,carb,fat,src,count,last,lastQty,pinned}}
 let DAY=0;     // offset from today
 let SEL='Breakfast';
 let PENDING=null;
+let PORT=null; // portion editor state
 let ATAB='search';
 let syncSt='idle';
 let lastSync=null;
@@ -495,10 +531,22 @@ function load(){
   CFG={...CFG,...lsG('nl_cfg',{})};
   LOG=lsG('nl_log',{});
   FOODS=lsG('nl_foods',[]);
+  USAGE=lsG('nl_usage',{});
   applyCfg();
 }
 function saveLog(){lsS('nl_log',LOG);}
 function saveFoods(){lsS('nl_foods',FOODS);}
+function saveUsage(){lsS('nl_usage',USAGE);}
+
+// ── frequency tracking (Frequent tab) ──
+const usageKey=f=>((f.name||'')+'|'+(f.brand||'')+'|'+(f.size||'')).toLowerCase();
+function recordUsage(f,q){
+  const key=usageKey(f);const u=USAGE[key]||{count:0,pinned:false};
+  USAGE[key]={name:f.name,brand:f.brand||'',size:f.size||'1 serving',
+    cal:f.cal||0,pro:f.pro||0,carb:f.carb||0,fat:f.fat||0,src:f.src||'',
+    count:(u.count||0)+1,last:Date.now(),lastQty:q||1,pinned:u.pinned||false};
+  saveUsage();
+}
 
 function saveCfg(){
   CFG.goalCal=+document.getElementById('gCal').value||2000;
@@ -586,13 +634,21 @@ function renderMeals(){
     items.forEach((item,idx)=>{
       const r=document.createElement('div');r.className='fr';
       const b=item.src==='custom'?`<span class="badge">mine</span>`:'';
-      r.innerHTML=`<div class="fr-i"><div class="fr-n">${item.name}${b}</div><div class="fr-m">${item.qty}× ${item.size||'serving'} · P${Math.round(item.pro||0)} C${Math.round(item.carb||0)} F${Math.round(item.fat||0)}</div></div><div class="fr-c">${Math.round(item.cal)}</div><button class="fr-d" onclick="delE('${meal}',${idx})">×</button>`;
+      r.innerHTML=`<div class="fr-i" onclick="editLogged('${meal}',${idx})" style="cursor:pointer"><div class="fr-n">${item.name}${b}</div><div class="fr-m">${item.qty}× ${item.size||'serving'} · P${Math.round(item.pro||0)} C${Math.round(item.carb||0)} F${Math.round(item.fat||0)}</div></div><div class="fr-c">${Math.round(item.cal)}</div><button class="fr-e" onclick="editLogged('${meal}',${idx})" title="Edit amount">✎</button><button class="fr-d" onclick="delE('${meal}',${idx})">×</button>`;
       ic.appendChild(r);
     });
   });
 }
 
 function delE(meal,idx){dayE()[meal].splice(idx,1);saveLog();renderToday();if(CFG.sheetURL)syncLog();}
+
+// open the portion editor on an already-logged entry (edit-in-place)
+function editLogged(meal,idx){
+  const e=dayE()[meal][idx];if(!e)return;const q=e.qty||1;
+  openPort({name:e.name,brand:e.brand||'',size:e.size||'1 serving',
+    cal:(e.cal||0)/q,pro:(e.pro||0)/q,carb:(e.carb||0)/q,fat:(e.fat||0)/q,src:e.src},
+    q,'edit',meal,idx);
+}
 
 // ═══════════════════════════════════════
 //  SHEET
@@ -616,11 +672,12 @@ function buildChips(){
 
 function goTab(t){
   ATAB=t;
-  document.querySelectorAll('.tab').forEach((b,i)=>b.classList.toggle('on',['search','recent','manual','myfoods'][i]===t));
+  document.querySelectorAll('.tab').forEach((b,i)=>b.classList.toggle('on',['search','frequent','recent','manual','myfoods'][i]===t));
   document.querySelectorAll('.tb').forEach(p=>p.classList.remove('on'));
   document.getElementById('tb-'+t).classList.add('on');
   if(t==='myfoods')renderMy();
   if(t==='recent')renderRecent();
+  if(t==='frequent')renderFrequent();
   if(t!=='manual'){stopLCam();stopLBC();}
 }
 
@@ -674,7 +731,7 @@ function renderRecent(){
     // 4. Draw the list
     c.innerHTML = uniqueRecents.map((f,i) => `
       <div class="mfi">
-        <div class="mfi-i">
+        <div class="mfi-i" onclick="adjRecent(${i})" style="cursor:pointer">
           <div class="mfi-n">${f.name || 'Unnamed Food'}</div>
           <div class="mfi-m">${f.brand ? f.brand + ' · ' : ''}${f.qty || 1}× ${f.size || 'serving'} · P${Math.round(f.pro||0)}g C${Math.round(f.carb||0)}g F${Math.round(f.fat||0)}g</div>
         </div>
@@ -705,6 +762,53 @@ function addRecent(i){
     src: f.src || 'recent', 
     t: Date.now() // Give it a fresh timestamp so it jumps to the top next time
   });
+}
+// tap a recent row to change the amount before logging
+function adjRecent(i){
+  const f=window._recents[i];const q=f.qty||1;
+  openPort({name:f.name||'Unnamed Food',brand:f.brand||'',size:f.size||'1 serving',
+    cal:(f.cal||0)/q,pro:(f.pro||0)/q,carb:(f.carb||0)/q,fat:(f.fat||0)/q,src:f.src||'recent'},
+    q,'add',SEL);
+}
+
+// ═══════════════════════════════════════
+//  FREQUENT (frequently-used database)
+// ═══════════════════════════════════════
+function renderFrequent(){
+  const c=document.getElementById('freqList');
+  const arr=Object.entries(USAGE).map(([key,u])=>({key,...u}))
+    .filter(u=>u.pinned||(u.count||0)>0);
+  arr.sort((a,b)=>(b.pinned-a.pinned)||((b.count||0)-(a.count||0))||((b.last||0)-(a.last||0)));
+  window._freq=arr;
+  if(!arr.length){
+    c.innerHTML='<div class="msg">No frequent foods yet.<br>Foods you log collect here automatically over time.<br><br><small style="color:var(--mu2)">Tip: tap ☆ on any item in My Foods to pin it here.</small></div>';
+    return;
+  }
+  c.innerHTML=arr.map((f,i)=>`
+    <div class="mfi">
+      <div class="mfi-i" onclick="adjFreq(${i})" style="cursor:pointer">
+        <div class="mfi-n">${f.name}${f.count?`<span class="freq-ct">×${f.count}</span>`:''}</div>
+        <div class="mfi-m">${f.brand?f.brand+' · ':''}${f.size} · P${Math.round(f.pro)}g C${Math.round(f.carb)}g F${Math.round(f.fat)}g · ${Math.round(f.cal)} kcal</div>
+      </div>
+      <button class="mfi-pin${f.pinned?' on':''}" onclick="togglePin(${i})" title="Pin to top">${f.pinned?'★':'☆'}</button>
+      <button class="mfi-a" onclick="addFreq(${i})">+ Add</button>
+    </div>`).join('');
+}
+// quick add using your usual (last-logged) amount
+function addFreq(i){
+  const f=window._freq[i];const q=f.lastQty||1;
+  push({name:f.name,brand:f.brand,size:f.size,qty:q,
+    cal:f.cal*q,pro:f.pro*q,carb:f.carb*q,fat:f.fat*q,src:f.src||'freq',t:Date.now()});
+}
+// tap a frequent row to change the amount before logging
+function adjFreq(i){
+  const f=window._freq[i];
+  openPort({name:f.name,brand:f.brand,size:f.size,cal:f.cal,pro:f.pro,carb:f.carb,fat:f.fat,src:f.src||'freq'},
+    f.lastQty||1,'add',SEL);
+}
+function togglePin(i){
+  const key=window._freq[i].key;if(!USAGE[key])return;
+  USAGE[key].pinned=!USAGE[key].pinned;saveUsage();renderFrequent();
 }
 // ═══════════════════════════════════════
 //  BUILT-IN WHOLE FOODS
@@ -745,6 +849,7 @@ async function doSearch(){
       const hit=FOODS.find(f=>f.barcode===q);
       if(hit){renderHits([norm(hit)],1);return;}
       const off=await fetchOFF(q,true);
+      if(off.length&&autoSaveScanned(off[0],q))toast('Saved scan to My Foods');
       renderHits(off,0);
     } else {
       // 2. Try Open Food Facts
@@ -768,6 +873,17 @@ async function doSearch(){
     console.error("Critical Search Error:", err);
     showR('<div class="msg">Search failed.</div>');
   }
+}
+
+// Persist a scanned product into the internal My Foods DB so future scans are instant local hits
+function autoSaveScanned(p,bc){
+  if(!bc||!p||!p.name)return false;
+  if(FOODS.some(f=>f.barcode===bc))return false; // already stored
+  FOODS.push({id:'cf'+Date.now(),name:p.name,brand:p.brand||'',size:p.size||'1 serving',
+    cal:p.cal||0,pro:p.pro||0,carb:p.carb||0,fat:p.fat||0,fib:p.fib||0,sod:p.sod||0,
+    barcode:bc,created:Date.now(),scanned:true});
+  saveFoods();if(CFG.sheetURL)syncFoods();
+  return true;
 }
 
 // Open Food Facts API
@@ -879,9 +995,55 @@ function doAdd(){
     src:PENDING.src||'off',t:Date.now()});
 }
 function push(entry){
-  dayE()[SEL].push(entry);saveLog();renderToday();closeSheet();
+  dayE()[SEL].push(entry);saveLog();
+  const q=entry.qty||1;
+  recordUsage({name:entry.name,brand:entry.brand,size:entry.size,
+    cal:(entry.cal||0)/q,pro:(entry.pro||0)/q,carb:(entry.carb||0)/q,fat:(entry.fat||0)/q,src:entry.src},q);
+  renderToday();closeSheet();
   toast(`Added to ${SEL}`);if(CFG.sheetURL)syncLog();
 }
+
+// ═══════════════════════════════════════
+//  PORTION EDITOR (add w/ amount, or edit logged entry)
+//  food values passed in are PER-SERVING
+// ═══════════════════════════════════════
+function openPort(food,qty,mode,meal,idx){
+  PORT={food,mode:mode||'add',meal,idx};
+  document.getElementById('portTitle').textContent=mode==='edit'?'Edit amount':'Adjust amount';
+  document.getElementById('portN').textContent=food.name;
+  document.getElementById('portB').textContent=food.brand||'';
+  document.getElementById('portS').textContent=`Per serving: ${food.size||'1 serving'}`;
+  document.getElementById('portQ').value=qty||1;
+  document.getElementById('portSave').textContent=mode==='edit'?'Save changes':`Add to ${meal||SEL}`;
+  portRefresh();
+  document.getElementById('portOv').classList.add('on');
+}
+function closePort(){document.getElementById('portOv').classList.remove('on');PORT=null;}
+function portRefresh(){
+  if(!PORT)return;const f=PORT.food;
+  const q=parseFloat(document.getElementById('portQ').value)||1;
+  document.getElementById('portM').innerHTML=[
+    {l:'Cal',v:Math.round(f.cal*q),u:''},{l:'Pro',v:Math.round(f.pro*q),u:'g'},
+    {l:'Carb',v:Math.round(f.carb*q),u:'g'},{l:'Fat',v:Math.round(f.fat*q),u:'g'}
+  ].map(x=>`<div class="mp"><div class="mp-v">${x.v}${x.u}</div><div class="mp-l">${x.l}</div></div>`).join('');
+}
+function portAdj(d){const e=document.getElementById('portQ');e.value=Math.max(.25,(parseFloat(e.value)||1)+d);portRefresh();}
+function portSave(){
+  if(!PORT)return;const f=PORT.food;
+  const q=Math.max(.25,parseFloat(document.getElementById('portQ').value)||1);
+  if(PORT.mode==='edit'){
+    const e=dayE()[PORT.meal][PORT.idx];
+    if(e){e.qty=q;e.cal=f.cal*q;e.pro=f.pro*q;e.carb=f.carb*q;e.fat=f.fat*q;
+      saveLog();renderToday();if(CFG.sheetURL)syncLog();}
+    closePort();toast('Amount updated');
+  }else{
+    const meal=PORT.meal||SEL;SEL=meal;
+    push({name:f.name,brand:f.brand||'',size:f.size||'1 serving',qty:q,
+      cal:f.cal*q,pro:f.pro*q,carb:f.carb*q,fat:f.fat*q,src:f.src||'off',t:Date.now()});
+    closePort();
+  }
+}
+document.getElementById('portOv').addEventListener('click',e=>{if(e.target===document.getElementById('portOv'))closePort();});
 
 // ═══════════════════════════════════════
 //  BARCODE SCANNER
@@ -987,19 +1149,32 @@ function addParsed(){
 // ═══════════════════════════════════════
 function renderMy(){
   const c=document.getElementById('myList');
-  if(!FOODS.length){c.innerHTML='<div class="msg">No custom foods yet.<br>Use the Manual tab to create and save foods here.</div>';return;}
-  c.innerHTML=FOODS.map((f,i)=>`
+  if(!FOODS.length){c.innerHTML='<div class="msg">No custom foods yet.<br>Scan a barcode or use the Manual tab to add foods here.</div>';return;}
+  c.innerHTML=FOODS.map((f,i)=>{
+    const pinned=!!(USAGE[usageKey(f)]&&USAGE[usageKey(f)].pinned);
+    return `
     <div class="mfi">
-      <div class="mfi-i">
-        <div class="mfi-n">${f.name}${f.barcode?`<span class="bc-t">▦</span>`:''}</div>
+      <div class="mfi-i" onclick="adjMy(${i})" style="cursor:pointer">
+        <div class="mfi-n">${f.name}${f.barcode?`<span class="bc-t">▦</span>`:''}${f.scanned?`<span class="scan-t">scan</span>`:''}</div>
         <div class="mfi-m">${f.brand?f.brand+' · ':''}${f.size} · P${f.pro}g C${f.carb}g F${f.fat}g</div>
       </div>
-      <div class="mfi-c">${f.cal}</div>
+      <button class="mfi-pin${pinned?' on':''}" onclick="pinMy(${i})" title="Pin to Frequent">${pinned?'★':'☆'}</button>
       <button class="mfi-a" onclick="addMy(${i})">+ Add</button>
       <button class="mfi-d" onclick="delMy(${i})">×</button>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 function addMy(i){const f=FOODS[i];push({name:f.name,brand:f.brand,size:f.size,qty:1,cal:f.cal,pro:f.pro,carb:f.carb,fat:f.fat,src:'custom',t:Date.now()});}
+// tap a My Foods row to change the amount before logging
+function adjMy(i){const f=FOODS[i];openPort({name:f.name,brand:f.brand||'',size:f.size||'1 serving',cal:f.cal,pro:f.pro,carb:f.carb,fat:f.fat,src:'custom'},1,'add',SEL);}
+// pin / unpin a My Food into the Frequent tab (seeds it without needing to log first)
+function pinMy(i){
+  const f=FOODS[i],key=usageKey(f),u=USAGE[key];
+  if(u&&u.pinned){u.pinned=false;toast('Unpinned');}
+  else{USAGE[key]={name:f.name,brand:f.brand||'',size:f.size||'1 serving',cal:f.cal,pro:f.pro,carb:f.carb,fat:f.fat,src:'custom',
+    count:(u&&u.count)||0,last:(u&&u.last)||Date.now(),lastQty:(u&&u.lastQty)||1,pinned:true};toast('Pinned to Frequent');}
+  saveUsage();renderMy();
+}
 function delMy(i){FOODS.splice(i,1);saveFoods();renderMy();toast('Removed');}
 
 // ═══════════════════════════════════════
@@ -1043,7 +1218,7 @@ async function pull(){
 //  EXPORT / IMPORT
 // ═══════════════════════════════════════
 function exportData(){
-  const blob=new Blob([JSON.stringify({v:2,exported:new Date().toISOString(),cfg:CFG,log:LOG,foods:FOODS},null,2)],{type:'application/json'});
+  const blob=new Blob([JSON.stringify({v:3,exported:new Date().toISOString(),cfg:CFG,log:LOG,foods:FOODS,usage:USAGE},null,2)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`nutrilog-${dk()}.json`;a.click();URL.revokeObjectURL(a.href);
   toast('Backup downloaded');
 }
@@ -1054,6 +1229,7 @@ function importData(e){
       const d=JSON.parse(ev.target.result);
       if(d.log){LOG={...LOG,...d.log};saveLog();}
       if(d.foods?.length){d.foods.forEach(f=>{if(!FOODS.find(x=>x.id===f.id))FOODS.push(f);});saveFoods();}
+      if(d.usage){USAGE={...USAGE,...d.usage};saveUsage();}
       if(d.cfg){CFG={...CFG,...d.cfg};lsS('nl_cfg',CFG);applyCfg();}
       renderToday();renderStats();
       toast(`Restored ${Object.keys(d.log||{}).length} days`);
@@ -1073,6 +1249,7 @@ function renderStats(){
     <div class="dstat"><span class="dstat-l">Days logged</span><span class="dstat-v">${days}</span></div>
     <div class="dstat"><span class="dstat-l">Total entries</span><span class="dstat-v">${entries}</span></div>
     <div class="dstat"><span class="dstat-l">Custom foods</span><span class="dstat-v">${FOODS.length}</span></div>
+    <div class="dstat"><span class="dstat-l">Frequent foods</span><span class="dstat-v">${Object.keys(USAGE).length}</span></div>
     <div class="dstat"><span class="dstat-l">Storage used</span><span class="dstat-v">${(sz/1024).toFixed(1)} KB (${pct}%)</span></div>
     ${pct>70?`<div style="margin-top:8px;font-size:12px;color:var(--am);font-family:var(--h)">⚠ Storage getting full — export a backup.</div>`:''}`;
   document.getElementById('setupBanner').style.display=CFG.sheetURL?'none':'block';
